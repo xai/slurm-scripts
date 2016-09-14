@@ -44,8 +44,9 @@ def setup_tool(tool, installdir, bindir):
     from plumbum.cmd import git
     with local.cwd(installdir):
         git["checkout", tool["version"]]()
-        build = local[tool["build"][0]]
-        build[tool["build"][1:]]()
+        if tool["build"]:
+            build = local[tool["build"][0]]
+            build[tool["build"][1:]]()
 
     executable = os.path.join(installdir, tool["run"])
     target = os.path.join(bindir, tool["name"])
@@ -143,6 +144,7 @@ def submit(config, workdir):
                                    config["name"] + "-%j.err")
             batchfile = []
             batchfile.append('#!/bin/bash')
+            batchfile.append('#SBATCH -J %s' % config["name"])
             batchfile.append('#SBATCH -p %s' % config["partition"])
             batchfile.append('#SBATCH -A %s' % config["account"])
             batchfile.append('#SBATCH -o %s' % outfile)
