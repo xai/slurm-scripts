@@ -7,7 +7,10 @@
 # Distributed under terms of the MIT license.
 
 """
-
+This is a simple wrapper to deploy required resources and submit slurm jobs.
+It reads a config file that is supplied as command line argument,
+retrieves specified tools and input files, and generates an sbatch script, that
+is automatically submitted to slurm.
 """
 
 import imp
@@ -110,6 +113,7 @@ def submit(config, workdir):
     """
     Submits a job using sbatch.
     """
+
     logging.info("Submitting job \"%s\":" % config["name"])
 
     for tool in config["tools"]:
@@ -141,8 +145,9 @@ def submit(config, workdir):
 
 def main():
     """
-    Executes a slurm job based on a specified config
+    Executes a slurm job based on a specified config.
     """
+
     global logging
 
     logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
