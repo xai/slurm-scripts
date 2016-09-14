@@ -128,11 +128,14 @@ def submit(config, workdir):
 
     for tool in config["tools"]:
         if tool["name"] == config["executable"]:
-            cmd = os.path.join(config["bindir"], tool["name"])
+            cmd = tool["name"]
 
     if cmd:
         from plumbum import local
         with local.cwd(workdir):
+            # prepend executable path with local bindir
+            local.env.path.insert(0, config["bindir"])
+
             outfile = os.path.join(config["outputdir"],
                                    config["name"] + "-%j.out")
             errfile = os.path.join(config["outputdir"],
