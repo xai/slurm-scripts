@@ -49,6 +49,7 @@ def setup_tool(tool, installdir, bindir):
 
     executable = os.path.join(installdir, tool["run"])
     target = os.path.join(bindir, tool["name"])
+    assert os.path.isfile(target), "Target does not exist: %s!" % target
 
     if os.path.islink(target):
         os.unlink(target)
