@@ -14,7 +14,6 @@ import imp
 import os
 import sys
 import logging
-import socket
 import json
 
 try:
@@ -41,6 +40,8 @@ def setup_tool(tool, installdir):
     from plumbum.cmd import git
     with local.cwd(installdir):
         git["checkout", tool["version"]]()
+        build = local[tool["build"][0]]
+        build[tool["build"][1:]]()
 
 
 def install_tool(tool, installdir):
@@ -76,7 +77,7 @@ def prepare_tools(tools, tooldir):
     assert os.path.isdir(tooldir), "Tool directory not found: %s!" % tooldir
 
     for tool in tools:
-        installdir = os.path.join(tooldir, tool["localpath"])
+        installdir = os.path.join(tooldir, tool["name"])
         logging.info("Preparing tool: %s (%s)" % (tool["name"], installdir))
         if os.path.isdir(os.path.join(installdir, gitdir)):
             update_tool(tool, installdir)
@@ -89,12 +90,11 @@ def prepare(config):
     """
     Prepares environment for the job, including input files, required tools,
     and output directories.
+    Returns working directory for the job.
     """
 
-    logging.info("Preparing job \"%s\" as id %s on %s" % (config["name"],
-                                                          jobid,
-                                                          hostname))
-    inputdir = os.path.join(config["inputdir"], jobid)
+    logging.info("Preparing job \"%s\"" % config["name"])
+    inputdir = os.path.join(config["inputdir"], config["name"])
     tooldir = config["tooldir"]
 
     if not os.path.exists(inputdir):
@@ -103,20 +103,41 @@ def prepare(config):
     prepare_input_files(config["input"], inputdir)
     prepare_tools(config["tools"], tooldir)
 
+    return inputdir
+
+
+def submit(config, workdir):
+    """
+    Submits a job using sbatch.
+    """
+    logging.info("Submitting job \"%s\":" % config["name"])
+
+    for tool in config["tools"]:
+        if tool["name"] == config["executable"]:
+            cmd = os.path.join(config["tooldir"], tool["name"], tool["run"])
+
+    if cmd:
+        from plumbum import local, FG
+        with local.cwd(workdir):
+            print("srun -p %s -A %s %s %s" % (config["partition"],
+                                              config["account"],
+                                              cmd,
+                                              " ".join(config["args"])))
+            srun = local["srun"]
+            args = ["-p", config["partition"], "-A", config["account"],
+                    cmd] + config["args"]
+            srun[args] & FG
+    else:
+        raise Exception("No executable command found!")
+
 
 def main():
     """
     Executes a slurm job based on a specified config
     """
-    global jobid, hostname, logging
+    global logging
 
-    """ read environment variables """
-    jobid = os.getenv("SLURM_JOB_ID", "unknown")
-    hostname = socket.gethostname()
-
-    logprefix = "%s:%s:" % (jobid, hostname)
-    logging.basicConfig(format=logprefix + "%(levelname)s:%(message)s",
-                        level=logging.INFO)
+    logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
     if len(sys.argv) == 1:
         print_help(sys.argv[0])
@@ -125,7 +146,8 @@ def main():
         logging.info("Using config file: %s" % sys.argv[1])
         config = json.load(configuration)
 
-    prepare(config)
+    workdir = prepare(config)
+    submit(config, workdir)
 
 
 if __name__ == "__main__":
