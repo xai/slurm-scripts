@@ -117,16 +117,24 @@ def submit(config, workdir):
             cmd = os.path.join(config["tooldir"], tool["name"], tool["run"])
 
     if cmd:
-        from plumbum import local, FG
+        from plumbum import local
         with local.cwd(workdir):
-            print("srun -p %s -A %s %s %s" % (config["partition"],
-                                              config["account"],
-                                              cmd,
-                                              " ".join(config["args"])))
-            srun = local["srun"]
-            args = ["-p", config["partition"], "-A", config["account"],
-                    cmd] + config["args"]
-            srun[args] & FG
+            outfile = os.path.join(config["outputdir"],
+                                   config["name"] + "-%j.out")
+            errfile = os.path.join(config["outputdir"],
+                                   config["name"] + "-%j.err")
+            batchfile = []
+            batchfile.append('#!/bin/bash')
+            batchfile.append('#SBATCH -p %s' % config["partition"])
+            batchfile.append('#SBATCH -A %s' % config["account"])
+            batchfile.append('#SBATCH -o %s' % outfile)
+            batchfile.append('#SBATCH -e %s' % errfile)
+            batchfile.append("%s %s" % (cmd, ' '.join(config["args"])))
+
+            job = "\n".join(batchfile)
+            print(job)
+            sbatch = local["sbatch"]
+            (sbatch << job)()
     else:
         raise Exception("No executable command found!")
 
