@@ -35,7 +35,8 @@ def print_help(cmd):
     sys.exit(1)
 
 
-def setup_tool(tool, installdir):
+def setup_tool(tool, installdir, bindir):
+    assert os.path.isdir(bindir), "Bin directory not found: %s!" % bindir
     logging.info("Preparing %s: git checkout %s" % (tool["name"],
                                                     tool["version"]))
 
@@ -45,6 +46,15 @@ def setup_tool(tool, installdir):
         git["checkout", tool["version"]]()
         build = local[tool["build"][0]]
         build[tool["build"][1:]]()
+
+    executable = os.path.join(installdir, tool["run"])
+    target = os.path.join(bindir, tool["name"])
+
+    if os.path.islink(target):
+        os.unlink(target)
+
+    from plumbum.cmd import ln
+    ln["-s", executable, target]()
 
 
 def install_tool(tool, installdir):
@@ -76,7 +86,7 @@ def prepare_input_files(inputfiles, inputdir):
         wget["-q", "-O" + target, f["source"]]()
 
 
-def prepare_tools(tools, tooldir):
+def prepare_tools(tools, tooldir, bindir):
     assert os.path.isdir(tooldir), "Tool directory not found: %s!" % tooldir
 
     for tool in tools:
@@ -86,7 +96,7 @@ def prepare_tools(tools, tooldir):
             update_tool(tool, installdir)
         else:
             install_tool(tool, installdir)
-        setup_tool(tool, installdir)
+        setup_tool(tool, installdir, bindir)
 
 
 def prepare(config):
@@ -104,7 +114,7 @@ def prepare(config):
         os.mkdir(inputdir)
 
     prepare_input_files(config["input"], inputdir)
-    prepare_tools(config["tools"], tooldir)
+    prepare_tools(config["tools"], tooldir, config["bindir"])
 
     return inputdir
 
@@ -118,7 +128,7 @@ def submit(config, workdir):
 
     for tool in config["tools"]:
         if tool["name"] == config["executable"]:
-            cmd = os.path.join(config["tooldir"], tool["name"], tool["run"])
+            cmd = os.path.join(config["bindir"], tool["name"])
 
     if cmd:
         from plumbum import local
