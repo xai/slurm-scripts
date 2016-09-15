@@ -85,12 +85,17 @@ def update_tool(tool, installdir):
 def prepare_input_files(inputfiles, inputdir):
     assert os.path.isdir(inputdir), "Input directory not found: %s!" % inputdir
 
-    from plumbum.cmd import wget
+    from plumbum.cmd import wget, git
 
     for f in inputfiles:
         logging.info("Preparing input file: %s" % f["target"])
         target = os.path.join(inputdir, f["target"])
-        wget["-q", "-O" + target, f["source"]]()
+        if f["type"] == "http":
+            wget["-q", "-O" + target, f["source"]]()
+        elif f["type"] == "git":
+            git["clone", "-q", f["source"], target]()
+        else:
+            raise Exception("Type of input resource unknown!")
 
 
 def prepare_tools(tools, tooldir, bindir):
