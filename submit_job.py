@@ -36,6 +36,10 @@ def print_help(cmd):
 
 
 def setup_tool(tool, installdir, bindir):
+    """
+    Checkout specified branch or tag, run build command and create symlinks
+    to executables.
+    """
     assert os.path.isdir(bindir), "Bin directory not found: %s!" % bindir
     logging.info("Preparing %s: git checkout %s" % (tool["name"],
                                                     tool["version"]))
@@ -43,7 +47,8 @@ def setup_tool(tool, installdir, bindir):
     from plumbum import local
     from plumbum.cmd import git
     with local.cwd(installdir):
-        git["checkout", tool["version"]]()
+        if tool["version"]:
+            git["checkout", tool["version"]]()
         if tool["build"]:
             build = local[tool["build"][0]]
             build[tool["build"][1:]]()
