@@ -47,15 +47,16 @@ def setup_tool(tool, installdir, bindir):
     from plumbum import local
     from plumbum.cmd import git
     with local.cwd(installdir):
-        if tool["version"]:
+        if tool.get("version", None):
             git["checkout", tool["version"]]()
-        if tool["build"]:
+        if tool.get("build", None):
             build = local[tool["build"][0]]
             build[tool["build"][1:]]()
 
     executable = os.path.join(installdir, tool["run"])
     target = os.path.join(bindir, tool["name"])
-    assert os.path.isfile(target), "Target does not exist: %s!" % target
+    assert os.path.isfile(executable), \
+        "Executable does not exist: %s!" % executable
 
     if os.path.islink(target):
         os.unlink(target)
@@ -85,11 +86,17 @@ def update_tool(tool, installdir):
 def prepare_input_files(inputfiles, inputdir):
     assert os.path.isdir(inputdir), "Input directory not found: %s!" % inputdir
 
-    from plumbum.cmd import wget, git
+    from plumbum.cmd import rm, wget, git
 
     for f in inputfiles:
         logging.info("Preparing input file: %s" % f["target"])
         target = os.path.join(inputdir, f["target"])
+
+        if os.path.exists(target):
+            logging.info("Target exists: %s" % target)
+            logging.info("Removing %s" % target)
+            rm["-r", target]()
+
         if f["type"] == "http":
             wget["-q", "-O" + target, f["source"]]()
         elif f["type"] == "git":
