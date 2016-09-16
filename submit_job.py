@@ -36,6 +36,12 @@ def print_help(cmd):
     sys.exit(1)
 
 
+def install_dependencies(tool):
+    for dep in tool.get("pip_dependencies", []):
+        from plumbum.cmd import pip3
+        pip3["install", dep]()
+
+
 def setup_tool(tool, installdir, bindir):
     """
     Checkout specified branch or tag, run build command and create symlinks
@@ -54,16 +60,17 @@ def setup_tool(tool, installdir, bindir):
             build = local[tool["build"][0]]
             build[tool["build"][1:]]()
 
-    executable = os.path.join(installdir, tool["run"])
-    target = os.path.join(bindir, tool["name"])
-    assert os.path.isfile(executable), \
-        "Executable does not exist: %s!" % executable
+    for tool_file in tool.get("install", []):
+        source = os.path.join(installdir, tool_file["source"])
+        target = os.path.join(bindir, tool_file["target"])
+        assert os.path.isfile(source), \
+            "Executable does not exist: %s!" % source
 
-    if os.path.islink(target):
-        os.unlink(target)
+        if os.path.islink(target):
+            os.unlink(target)
 
-    from plumbum.cmd import ln
-    ln["-s", executable, target]()
+        from plumbum.cmd import ln
+        ln["-s", source, target]()
 
 
 def install_tool(tool, installdir):
@@ -112,6 +119,8 @@ def prepare_tools(tools, tooldir, bindir):
     for tool in tools:
         installdir = os.path.join(tooldir, tool["name"])
         logging.info("Preparing tool: %s (%s)" % (tool["name"], installdir))
+
+        install_dependencies(tool)
         if os.path.isdir(os.path.join(installdir, gitdir)):
             update_tool(tool, installdir)
         else:
@@ -133,8 +142,8 @@ def prepare(config):
     if not os.path.exists(inputdir):
         os.mkdir(inputdir)
 
-    prepare_input_files(config["input"], inputdir)
-    prepare_tools(config["tools"], tooldir, config["bindir"])
+    prepare_input_files(config.get("input", []), inputdir)
+    prepare_tools(config.get("tools", []), tooldir, config["bindir"])
 
     return inputdir
 
@@ -148,7 +157,7 @@ def submit(config, workdir, dry_run):
 
     for tool in config["tools"]:
         if tool["name"] == config["executable"]:
-            cmd = tool["name"]
+            cmd = tool["run"]
 
     if cmd:
         from plumbum import local
@@ -156,10 +165,18 @@ def submit(config, workdir, dry_run):
             # prepend executable path with local bindir
             local.env.path.insert(0, config["bindir"])
 
-            outfile = os.path.join(config["outputdir"],
-                                   config["name"] + "-%j.out")
-            errfile = os.path.join(config["outputdir"],
-                                   config["name"] + "-%j.err")
+            output = os.path.join(config["outputdir"], config["name"])
+            if not os.path.isdir(output):
+                os.mkdir(output)
+
+            outfile = os.path.join(output, "%j.out")
+            errfile = os.path.join(output, "%j.err")
+            outdir = os.path.join(output, "out")
+            if not os.path.isdir(outdir):
+                os.mkdir(outdir)
+
+            cmd_args = ' '.join(config["args"]).replace("$$OUT$$", outdir)
+
             batchfile = []
             batchfile.append('#!/bin/bash')
             batchfile.append('#SBATCH -J %s' % config["name"])
@@ -167,10 +184,11 @@ def submit(config, workdir, dry_run):
             batchfile.append('#SBATCH -A %s' % config["account"])
             batchfile.append('#SBATCH -o %s' % outfile)
             batchfile.append('#SBATCH -e %s' % errfile)
-            batchfile.append("%s %s" % (cmd, ' '.join(config["args"])))
+            batchfile.append("%s %s" % (cmd, cmd_args))
 
             job = "\n".join(batchfile)
-            print(job)
+            sep = 80 * "-"
+            print("\n".join((sep, job, sep)))
 
             if not dry_run:
                 sbatch = local["sbatch"]
