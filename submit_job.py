@@ -42,7 +42,7 @@ def install_dependencies(tool):
         pip3["install", dep]()
 
 
-def setup_tool(tool, installdir, bindir):
+def setup_tool(tool, installdir, bindir, confdir):
     """
     Checkout specified branch or tag, run build command and create symlinks
     to executables.
@@ -52,7 +52,7 @@ def setup_tool(tool, installdir, bindir):
                                                     tool["version"]))
 
     from plumbum import local
-    from plumbum.cmd import git
+    from plumbum.cmd import git, ln
     with local.cwd(installdir):
         if tool.get("version", None):
             git["checkout", tool["version"]]()
@@ -69,7 +69,17 @@ def setup_tool(tool, installdir, bindir):
         if os.path.islink(target):
             os.unlink(target)
 
-        from plumbum.cmd import ln
+        ln["-s", source, target]()
+
+    for config_file in tool.get("config", []):
+        source = os.path.join(installdir, config_file["source"])
+        target = os.path.join(confdir, config_file["target"])
+        assert os.path.isfile(source), \
+            "Configfile does not exist: %s!" % source
+
+        if os.path.islink(target):
+            os.unlink(target)
+
         ln["-s", source, target]()
 
 
@@ -113,7 +123,7 @@ def prepare_input_files(inputfiles, inputdir):
             raise Exception("Type of input resource unknown!")
 
 
-def prepare_tools(tools, tooldir, bindir):
+def prepare_tools(tools, tooldir, bindir, confdir):
     assert os.path.isdir(tooldir), "Tool directory not found: %s!" % tooldir
 
     for tool in tools:
@@ -125,7 +135,7 @@ def prepare_tools(tools, tooldir, bindir):
             update_tool(tool, installdir)
         else:
             install_tool(tool, installdir)
-        setup_tool(tool, installdir, bindir)
+        setup_tool(tool, installdir, bindir, confdir)
 
 
 def prepare(config):
@@ -143,7 +153,8 @@ def prepare(config):
         os.mkdir(inputdir)
 
     prepare_input_files(config.get("input", []), inputdir)
-    prepare_tools(config.get("tools", []), tooldir, config["bindir"])
+    prepare_tools(config.get("tools", []), tooldir, config["bindir"],
+                  config["confdir"])
 
     return inputdir
 
@@ -155,27 +166,27 @@ def submit(config, workdir, dry_run):
 
     logging.info("Submitting job \"%s\":" % config["name"])
 
+    output = os.path.join(config["outputdir"], config["name"])
+    if not os.path.isdir(output):
+        os.mkdir(output)
+
+    outfile = os.path.join(output, "%j.out")
+    errfile = os.path.join(output, "%j.err")
+    outdir = os.path.join(output, "out")
+    if not os.path.isdir(outdir):
+        os.mkdir(outdir)
+
     for tool in config["tools"]:
         if tool["name"] == config["executable"]:
             cmd = tool["run"]
+            cmd_args = ' '.join(config["args"]).replace("$$OUT$$", outdir)
+            cmd_args = cmd_args.replace("$$CONFDIR$$", config["confdir"])
 
     if cmd:
         from plumbum import local
         with local.cwd(workdir):
             # prepend executable path with local bindir
             local.env.path.insert(0, config["bindir"])
-
-            output = os.path.join(config["outputdir"], config["name"])
-            if not os.path.isdir(output):
-                os.mkdir(output)
-
-            outfile = os.path.join(output, "%j.out")
-            errfile = os.path.join(output, "%j.err")
-            outdir = os.path.join(output, "out")
-            if not os.path.isdir(outdir):
-                os.mkdir(outdir)
-
-            cmd_args = ' '.join(config["args"]).replace("$$OUT$$", outdir)
 
             batchfile = []
             batchfile.append('#!/bin/bash')
