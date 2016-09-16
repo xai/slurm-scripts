@@ -18,6 +18,7 @@ import os
 import sys
 import logging
 import json
+import argparse
 
 try:
     imp.find_module("plumbum")
@@ -138,7 +139,7 @@ def prepare(config):
     return inputdir
 
 
-def submit(config, workdir):
+def submit(config, workdir, dry_run):
     """
     Submits a job using sbatch.
     """
@@ -170,8 +171,12 @@ def submit(config, workdir):
 
             job = "\n".join(batchfile)
             print(job)
-            sbatch = local["sbatch"]
-            (sbatch << job)()
+
+            if not dry_run:
+                sbatch = local["sbatch"]
+                (sbatch << job)()
+            else:
+                logging.info("Dry run: not submitting job.")
     else:
         raise Exception("No executable command found!")
 
@@ -185,15 +190,21 @@ def main():
 
     logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
-    if len(sys.argv) == 1:
-        print_help(sys.argv[0])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n",
+                        "--dry-run",
+                        help="perform a trial run with no changes made",
+                        action="store_true")
+    parser.add_argument("config_files", default=[], nargs="+")
+    args = parser.parse_args()
 
-    with open(sys.argv[1], "r") as configuration:
-        logging.info("Using config file: %s" % sys.argv[1])
-        config = json.load(configuration)
+    for config_file in args.config_files:
+        with open(config_file, "r") as configuration:
+            logging.info("Using config file: %s" % config_file)
+            config = json.load(configuration)
 
-    workdir = prepare(config)
-    submit(config, workdir)
+        workdir = prepare(config)
+        submit(config, workdir, args.dry_run)
 
 
 if __name__ == "__main__":
