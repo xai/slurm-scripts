@@ -181,6 +181,7 @@ def submit(config, workdir, dry_run):
             cmd = tool["run"]
             cmd_args = ' '.join(config["args"]).replace("$$OUT$$", outdir)
             cmd_args = cmd_args.replace("$$CONFDIR$$", config["confdir"])
+            cmd_args = cmd_args.replace("$$BINDIR$$", config["bindir"])
 
     if cmd:
         from plumbum import local
