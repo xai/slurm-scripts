@@ -69,7 +69,7 @@ def setup_tool(tool, installdir, bindir, confdir):
         if os.path.islink(target):
             os.unlink(target)
 
-        ln["-s", source, target]()
+        ln["-sf", source, target]()
 
     for config_file in tool.get("config", []):
         source = os.path.join(installdir, config_file["source"])
@@ -80,7 +80,7 @@ def setup_tool(tool, installdir, bindir, confdir):
         if os.path.islink(target):
             os.unlink(target)
 
-        ln["-s", source, target]()
+        ln["-sf", source, target]()
 
 
 def install_tool(tool, installdir):
@@ -196,6 +196,8 @@ def submit(config, workdir, dry_run):
             batchfile.append('#SBATCH -A %s' % config["account"])
             batchfile.append('#SBATCH -o %s' % outfile)
             batchfile.append('#SBATCH -e %s' % errfile)
+            for opt in config["slurmopts"]:
+                batchfile.append('#SBATCH %s' % opt)
             batchfile.append("%s %s" % (cmd, cmd_args))
 
             job = "\n".join(batchfile)
