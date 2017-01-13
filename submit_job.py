@@ -176,39 +176,46 @@ def submit(config, workdir, dry_run):
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
 
+    jobs = []
     for tool in config["tools"]:
         if tool["name"] == config["executable"]:
             cmd = tool["run"]
-            cmd_args = ' '.join(config["args"]).replace("$$OUT$$", outdir)
-            cmd_args = cmd_args.replace("$$CONFDIR$$", config["confdir"])
-            cmd_args = cmd_args.replace("$$BINDIR$$", config["bindir"])
+            for job in config.get("jobs"):
+                cmd_args = ' '.join(job["args"]).replace("$$OUT$$", outdir)
+                cmd_args = cmd_args.replace("$$CONFDIR$$", config["confdir"])
+                cmd_args = cmd_args.replace("$$BINDIR$$", config["bindir"])
+                newjob = dict()
+                newjob["cmd"] = cmd
+                newjob["args"] = cmd_args
+                jobs.append(newjob)
 
     if cmd:
         from plumbum import local
         with local.cwd(workdir):
-            # prepend executable path with local bindir
-            local.env.path.insert(0, config["bindir"])
+            for job in jobs:
+                # prepend executable path with local bindir
+                local.env.path.insert(0, config["bindir"])
 
-            batchfile = []
-            batchfile.append('#!/bin/bash')
-            batchfile.append('#SBATCH -J %s' % config["name"])
-            batchfile.append('#SBATCH -p %s' % config["partition"])
-            batchfile.append('#SBATCH -A %s' % config["account"])
-            batchfile.append('#SBATCH -o %s' % outfile)
-            batchfile.append('#SBATCH -e %s' % errfile)
-            for opt in config["slurmopts"]:
-                batchfile.append('#SBATCH %s' % opt)
-            batchfile.append("%s %s" % (cmd, cmd_args))
+                batchfile = []
+                batchfile.append('#!/bin/bash')
+                batchfile.append('#SBATCH -J %s' % config["name"])
+                batchfile.append('#SBATCH -p %s' % config["partition"])
+                batchfile.append('#SBATCH -A %s' % config["account"])
+                batchfile.append('#SBATCH -o %s' % outfile)
+                batchfile.append('#SBATCH -e %s' % errfile)
+                for opt in config["slurmopts"]:
+                    batchfile.append('#SBATCH %s' % opt)
+                batchfile.append("%s %s" % (job["cmd"], job["args"]))
 
-            job = "\n".join(batchfile)
-            sep = 80 * "-"
-            print("\n".join((sep, job, sep)))
+                script = "\n".join(batchfile)
+                sep = 80 * "-"
+                print("\n".join((sep, script, sep)))
 
-            if not dry_run:
-                sbatch = local["sbatch"]
-                (sbatch << job)()
-            else:
-                logging.info("Dry run: not submitting job.")
+                if not dry_run:
+                    sbatch = local["sbatch"]
+                    (sbatch << script)()
+                else:
+                    logging.info("Dry run: not submitting job.")
     else:
         raise Exception("No executable command found!")
 
