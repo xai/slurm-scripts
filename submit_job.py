@@ -203,8 +203,11 @@ def submit(config, workdir, dry_run):
                 batchfile.append('#SBATCH -A %s' % config["account"])
                 batchfile.append('#SBATCH -o %s' % outfile)
                 batchfile.append('#SBATCH -e %s' % errfile)
-                for opt in config["slurmopts"]:
-                    batchfile.append('#SBATCH %s' % opt)
+
+                if config["slurmopts"]:
+                    for opt in config["slurmopts"]:
+                        batchfile.append('#SBATCH %s' % opt)
+
                 batchfile.append("%s %s" % (job["cmd"], job["args"]))
 
                 script = "\n".join(batchfile)
