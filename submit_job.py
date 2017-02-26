@@ -104,21 +104,22 @@ def update_tool(tool, installdir):
 def prepare_input_files(inputfiles, inputdir):
     assert os.path.isdir(inputdir), "Input directory not found: %s!" % inputdir
 
-    from plumbum.cmd import rm, wget, git
+    from plumbum import local
+    from plumbum.cmd import wget, git
 
     for f in inputfiles:
         logging.info("Preparing input file: %s" % f["target"])
         target = os.path.join(inputdir, f["target"])
 
-        if os.path.exists(target):
-            logging.info("Target exists: %s" % target)
-            logging.info("Removing %s" % target)
-            rm["-r", target]()
-
         if f["type"] == "http":
             wget["-q", "-O" + target, f["source"]]()
         elif f["type"] == "git":
-            git["clone", "-q", f["source"], target]()
+            if os.path.exists(target):
+                logging.info("Target exists: %s" % target)
+                with local.cwd(target):
+                    git["pull", "-q"]()
+            else:
+                git["clone", "-q", f["source"], target]()
         else:
             raise Exception("Type of input resource unknown!")
 
@@ -192,32 +193,39 @@ def submit(config, workdir, dry_run):
     if cmd:
         from plumbum import local
         with local.cwd(workdir):
+            # prepend executable path with local bindir
+            local.env.path.insert(0, config["bindir"])
+
+            batchfile = []
+            batchfile.append('#!/bin/bash')
+            batchfile.append('#SBATCH -J %s' % config["name"])
+            batchfile.append('#SBATCH -p %s' % config["partition"])
+            batchfile.append('#SBATCH -A %s' % config["account"])
+            batchfile.append('#SBATCH --array 0-%d' % (len(jobs) - 1))
+            batchfile.append('#SBATCH -o %s-%%A_%%a' % outfile)
+            batchfile.append('#SBATCH -e %s-%%A_%%a' % errfile)
+            batchfile.append('declare -a TASKS')
+
+            for opt in config.get("slurmopts", []):
+                batchfile.append('#SBATCH %s' % opt)
+
+            i = 0
             for job in jobs:
-                # prepend executable path with local bindir
-                local.env.path.insert(0, config["bindir"])
+                batchfile.append("TASKS[%d]=\"%s %s\"" % (i, job["cmd"],
+                                                          job["args"]))
+                i += 1
 
-                batchfile = []
-                batchfile.append('#!/bin/bash')
-                batchfile.append('#SBATCH -J %s' % config["name"])
-                batchfile.append('#SBATCH -p %s' % config["partition"])
-                batchfile.append('#SBATCH -A %s' % config["account"])
-                batchfile.append('#SBATCH -o %s' % outfile)
-                batchfile.append('#SBATCH -e %s' % errfile)
+            batchfile.append("${TASKS[${SLURM_ARRAY_TASK_ID}]}")
 
-                for opt in config.get("slurmopts", []):
-                    batchfile.append('#SBATCH %s' % opt)
+            script = "\n".join(batchfile)
+            sep = 80 * "-"
+            print("\n".join((sep, script, sep)))
 
-                batchfile.append("%s %s" % (job["cmd"], job["args"]))
-
-                script = "\n".join(batchfile)
-                sep = 80 * "-"
-                print("\n".join((sep, script, sep)))
-
-                if not dry_run:
-                    sbatch = local["sbatch"]
-                    (sbatch << script)()
-                else:
-                    logging.info("Dry run: not submitting job.")
+            if not dry_run:
+                sbatch = local["sbatch"]
+                (sbatch << script)()
+            else:
+                logging.info("Dry run: not submitting job.")
     else:
         raise Exception("No executable command found!")
 
